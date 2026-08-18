@@ -1,0 +1,325 @@
+/*
+    BANK MANAGEMENT APPLICATION
+    -----------------------------
+    Console-based, menu-driven, object-oriented (Account class), uses
+    file handling (accounts.txt) for persistent storage.
+    Supports: create account, deposit, withdraw, balance check,
+    display all accounts, delete account.
+
+    Compile: g++ -std=c++17 -o bank_management bank_management.cpp
+    Run:     ./bank_management
+*/
+
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <vector>
+#include <iomanip>
+#include <limits>
+
+using namespace std;
+
+const string FILE_NAME = "accounts.txt";
+
+// ---------- Utility ----------
+void clearInputBuffer() {
+    cin.clear();
+    cin.ignore(numeric_limits<streamsize>::max(), '\n');
+}
+
+int getIntInput(const string &prompt) {
+    int value;
+    while (true) {
+        cout << prompt;
+        cin >> value;
+        if (cin.fail()) {
+            cout << "Invalid input. Please enter a number.\n";
+            clearInputBuffer();
+        } else {
+            clearInputBuffer();
+            return value;
+        }
+    }
+}
+
+double getDoubleInput(const string &prompt) {
+    double value;
+    while (true) {
+        cout << prompt;
+        cin >> value;
+        if (cin.fail()) {
+            cout << "Invalid input. Please enter a number.\n";
+            clearInputBuffer();
+        } else {
+            clearInputBuffer();
+            return value;
+        }
+    }
+}
+
+string getStringInput(const string &prompt) {
+    string value;
+    cout << prompt;
+    getline(cin, value);
+    return value;
+}
+
+// ---------- Account Class ----------
+class Account {
+private:
+    int accountNumber;
+    string holderName;
+    string accountType; // Savings / Current
+    double balance;
+
+public:
+    Account() : accountNumber(0), balance(0.0) {}
+
+    Account(int accNo, string name, string type, double bal)
+        : accountNumber(accNo), holderName(move(name)),
+          accountType(move(type)), balance(bal) {}
+
+    // Getters
+    int getAccountNumber() const { return accountNumber; }
+    string getHolderName() const { return holderName; }
+    string getAccountType() const { return accountType; }
+    double getBalance() const { return balance; }
+
+    // Operations
+    void deposit(double amount) { balance += amount; }
+
+    bool withdraw(double amount) {
+        if (amount > balance) return false;
+        balance -= amount;
+        return true;
+    }
+
+    // Serialize / Deserialize
+    string toLine() const {
+        ostringstream oss;
+        oss << accountNumber << '|' << holderName << '|' << accountType << '|' << balance;
+        return oss.str();
+    }
+
+    static Account fromLine(const string &line) {
+        stringstream ss(line);
+        string token;
+        int accNo; string name, type; double bal;
+
+        getline(ss, token, '|'); accNo = stoi(token);
+        getline(ss, token, '|'); name = token;
+        getline(ss, token, '|'); type = token;
+        getline(ss, token, '|'); bal = stod(token);
+
+        return Account(accNo, name, type, bal);
+    }
+
+    void display() const {
+        cout << left
+             << setw(12) << accountNumber
+             << setw(20) << holderName
+             << setw(12) << accountType
+             << setw(12) << fixed << setprecision(2) << balance << "\n";
+    }
+};
+
+// ---------- File I/O Helpers ----------
+vector<Account> loadAllAccounts() {
+    vector<Account> accounts;
+    ifstream inFile(FILE_NAME);
+    if (!inFile) return accounts;
+
+    string line;
+    while (getline(inFile, line)) {
+        if (line.empty()) continue;
+        accounts.push_back(Account::fromLine(line));
+    }
+    inFile.close();
+    return accounts;
+}
+
+void saveAllAccounts(const vector<Account> &accounts) {
+    ofstream outFile(FILE_NAME, ios::trunc);
+    for (const auto &a : accounts) {
+        outFile << a.toLine() << "\n";
+    }
+    outFile.close();
+}
+
+bool accountExists(const vector<Account> &accounts, int accNo) {
+    for (const auto &a : accounts)
+        if (a.getAccountNumber() == accNo) return true;
+    return false;
+}
+
+int findAccountIndex(const vector<Account> &accounts, int accNo) {
+    for (size_t i = 0; i < accounts.size(); i++)
+        if (accounts[i].getAccountNumber() == accNo) return (int)i;
+    return -1;
+}
+
+// ---------- Core Operations ----------
+void createAccount() {
+    vector<Account> accounts = loadAllAccounts();
+
+    int accNo = getIntInput("Enter new Account Number: ");
+    if (accountExists(accounts, accNo)) {
+        cout << "An account with this number already exists!\n";
+        return;
+    }
+
+    string name = getStringInput("Enter Account Holder Name: ");
+    string type = getStringInput("Enter Account Type (Savings/Current): ");
+    double initialDeposit = getDoubleInput("Enter Initial Deposit Amount: ");
+
+    if (initialDeposit < 0) {
+        cout << "Initial deposit cannot be negative.\n";
+        return;
+    }
+
+    Account newAcc(accNo, name, type, initialDeposit);
+    accounts.push_back(newAcc);
+    saveAllAccounts(accounts);
+
+    cout << "Account created successfully! Account Number: " << accNo << "\n";
+}
+
+void depositMoney() {
+    int accNo = getIntInput("Enter Account Number: ");
+    vector<Account> accounts = loadAllAccounts();
+    int idx = findAccountIndex(accounts, accNo);
+
+    if (idx == -1) {
+        cout << "Account not found.\n";
+        return;
+    }
+
+    double amount = getDoubleInput("Enter amount to deposit: ");
+    if (amount <= 0) {
+        cout << "Deposit amount must be positive.\n";
+        return;
+    }
+
+    accounts[idx].deposit(amount);
+    saveAllAccounts(accounts);
+
+    cout << "Deposit successful. New Balance: " << fixed << setprecision(2)
+         << accounts[idx].getBalance() << "\n";
+}
+
+void withdrawMoney() {
+    int accNo = getIntInput("Enter Account Number: ");
+    vector<Account> accounts = loadAllAccounts();
+    int idx = findAccountIndex(accounts, accNo);
+
+    if (idx == -1) {
+        cout << "Account not found.\n";
+        return;
+    }
+
+    double amount = getDoubleInput("Enter amount to withdraw: ");
+    if (amount <= 0) {
+        cout << "Withdrawal amount must be positive.\n";
+        return;
+    }
+
+    if (accounts[idx].withdraw(amount)) {
+        saveAllAccounts(accounts);
+        cout << "Withdrawal successful. New Balance: " << fixed << setprecision(2)
+             << accounts[idx].getBalance() << "\n";
+    } else {
+        cout << "Insufficient balance. Current Balance: " << fixed << setprecision(2)
+             << accounts[idx].getBalance() << "\n";
+    }
+}
+
+void checkBalance() {
+    int accNo = getIntInput("Enter Account Number: ");
+    vector<Account> accounts = loadAllAccounts();
+    int idx = findAccountIndex(accounts, accNo);
+
+    if (idx == -1) {
+        cout << "Account not found.\n";
+        return;
+    }
+
+    cout << "Account Holder: " << accounts[idx].getHolderName() << "\n";
+    cout << "Balance: " << fixed << setprecision(2) << accounts[idx].getBalance() << "\n";
+}
+
+void displayAllAccounts() {
+    vector<Account> accounts = loadAllAccounts();
+
+    if (accounts.empty()) {
+        cout << "No accounts found.\n";
+        return;
+    }
+
+    cout << "\n" << left
+         << setw(12) << "Acc No" << setw(20) << "Holder Name"
+         << setw(12) << "Type" << setw(12) << "Balance" << "\n";
+    cout << string(56, '-') << "\n";
+
+    for (const auto &a : accounts) a.display();
+
+    cout << string(56, '-') << "\n";
+    cout << "Total Accounts: " << accounts.size() << "\n";
+}
+
+void deleteAccount() {
+    int accNo = getIntInput("Enter Account Number to close/delete: ");
+    vector<Account> accounts = loadAllAccounts();
+    int idx = findAccountIndex(accounts, accNo);
+
+    if (idx == -1) {
+        cout << "Account not found.\n";
+        return;
+    }
+
+    char confirm;
+    cout << "Are you sure you want to close this account? (y/n): ";
+    cin >> confirm;
+    clearInputBuffer();
+
+    if (confirm == 'y' || confirm == 'Y') {
+        accounts.erase(accounts.begin() + idx);
+        saveAllAccounts(accounts);
+        cout << "Account closed successfully.\n";
+    } else {
+        cout << "Operation cancelled.\n";
+    }
+}
+
+void showMenu() {
+    cout << "\n===== BANK MANAGEMENT SYSTEM =====\n";
+    cout << "1. Create Account\n";
+    cout << "2. Deposit Money\n";
+    cout << "3. Withdraw Money\n";
+    cout << "4. Check Balance\n";
+    cout << "5. Display All Accounts\n";
+    cout << "6. Close/Delete Account\n";
+    cout << "7. Exit\n";
+    cout << "===================================\n";
+}
+
+int main() {
+    int choice;
+
+    do {
+        showMenu();
+        choice = getIntInput("Enter your choice: ");
+
+        switch (choice) {
+            case 1: createAccount(); break;
+            case 2: depositMoney(); break;
+            case 3: withdrawMoney(); break;
+            case 4: checkBalance(); break;
+            case 5: displayAllAccounts(); break;
+            case 6: deleteAccount(); break;
+            case 7: cout << "Exiting... Thank you for banking with us!\n"; break;
+            default: cout << "Invalid choice. Please try again.\n";
+        }
+    } while (choice != 7);
+
+    return 0;
+}
