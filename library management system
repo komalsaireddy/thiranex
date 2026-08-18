@@ -1,0 +1,376 @@
+/*
+    LIBRARY MANAGEMENT SYSTEM
+    ----------------------------
+    Console-based, menu-driven, class-based (Book, Member), uses file
+    handling (books.txt, members.txt) for persistent storage.
+    Supports: add book, issue/return book, search by title/author,
+    add member, display books/members.
+
+    Compile: g++ -std=c++17 -o library_management library_management.cpp
+    Run:     ./library_management
+*/
+
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <vector>
+#include <iomanip>
+#include <limits>
+#include <algorithm>
+
+using namespace std;
+
+const string BOOKS_FILE = "books.txt";
+const string MEMBERS_FILE = "members.txt";
+
+// ---------- Utility ----------
+void clearInputBuffer() {
+    cin.clear();
+    cin.ignore(numeric_limits<streamsize>::max(), '\n');
+}
+
+int getIntInput(const string &prompt) {
+    int value;
+    while (true) {
+        cout << prompt;
+        cin >> value;
+        if (cin.fail()) {
+            cout << "Invalid input. Please enter a number.\n";
+            clearInputBuffer();
+        } else {
+            clearInputBuffer();
+            return value;
+        }
+    }
+}
+
+string getStringInput(const string &prompt) {
+    string value;
+    cout << prompt;
+    getline(cin, value);
+    return value;
+}
+
+string toLower(string s) {
+    transform(s.begin(), s.end(), s.begin(), ::tolower);
+    return s;
+}
+
+// ---------- Book Class ----------
+class Book {
+private:
+    int bookId;
+    string title;
+    string author;
+    bool issued;
+    string issuedTo; // member ID as string, empty if not issued
+
+public:
+    Book() : bookId(0), issued(false) {}
+
+    Book(int id, string t, string a, bool iss, string to)
+        : bookId(id), title(move(t)), author(move(a)), issued(iss), issuedTo(move(to)) {}
+
+    int getId() const { return bookId; }
+    string getTitle() const { return title; }
+    string getAuthor() const { return author; }
+    bool isIssued() const { return issued; }
+    string getIssuedTo() const { return issuedTo; }
+
+    void issueTo(const string &memberId) { issued = true; issuedTo = memberId; }
+    void returnBook() { issued = false; issuedTo = ""; }
+
+    string toLine() const {
+        ostringstream oss;
+        oss << bookId << '|' << title << '|' << author << '|'
+            << (issued ? 1 : 0) << '|' << issuedTo;
+        return oss.str();
+    }
+
+    static Book fromLine(const string &line) {
+        stringstream ss(line);
+        string token;
+        int id; string t, a, to; bool iss;
+
+        getline(ss, token, '|'); id = stoi(token);
+        getline(ss, token, '|'); t = token;
+        getline(ss, token, '|'); a = token;
+        getline(ss, token, '|'); iss = (token == "1");
+        getline(ss, token, '|'); to = token;
+
+        return Book(id, t, a, iss, to);
+    }
+
+    void display() const {
+        cout << left << setw(6) << bookId << setw(25) << title << setw(20) << author
+             << setw(10) << (issued ? "Issued" : "Available")
+             << (issued ? ("(Member " + issuedTo + ")") : "") << "\n";
+    }
+};
+
+// ---------- Member Class ----------
+class Member {
+private:
+    int memberId;
+    string name;
+    string contact;
+
+public:
+    Member() : memberId(0) {}
+    Member(int id, string n, string c) : memberId(id), name(move(n)), contact(move(c)) {}
+
+    int getId() const { return memberId; }
+    string getName() const { return name; }
+    string getContact() const { return contact; }
+
+    string toLine() const {
+        ostringstream oss;
+        oss << memberId << '|' << name << '|' << contact;
+        return oss.str();
+    }
+
+    static Member fromLine(const string &line) {
+        stringstream ss(line);
+        string token;
+        int id; string n, c;
+
+        getline(ss, token, '|'); id = stoi(token);
+        getline(ss, token, '|'); n = token;
+        getline(ss, token, '|'); c = token;
+
+        return Member(id, n, c);
+    }
+
+    void display() const {
+        cout << left << setw(10) << memberId << setw(20) << name << setw(15) << contact << "\n";
+    }
+};
+
+// ---------- File I/O Helpers ----------
+vector<Book> loadAllBooks() {
+    vector<Book> books;
+    ifstream inFile(BOOKS_FILE);
+    if (!inFile) return books;
+    string line;
+    while (getline(inFile, line)) {
+        if (!line.empty()) books.push_back(Book::fromLine(line));
+    }
+    return books;
+}
+
+void saveAllBooks(const vector<Book> &books) {
+    ofstream outFile(BOOKS_FILE, ios::trunc);
+    for (const auto &b : books) outFile << b.toLine() << "\n";
+}
+
+vector<Member> loadAllMembers() {
+    vector<Member> members;
+    ifstream inFile(MEMBERS_FILE);
+    if (!inFile) return members;
+    string line;
+    while (getline(inFile, line)) {
+        if (!line.empty()) members.push_back(Member::fromLine(line));
+    }
+    return members;
+}
+
+void saveAllMembers(const vector<Member> &members) {
+    ofstream outFile(MEMBERS_FILE, ios::trunc);
+    for (const auto &m : members) outFile << m.toLine() << "\n";
+}
+
+int findBookIndex(const vector<Book> &books, int id) {
+    for (size_t i = 0; i < books.size(); i++)
+        if (books[i].getId() == id) return (int)i;
+    return -1;
+}
+
+bool memberExists(const vector<Member> &members, int id) {
+    for (const auto &m : members)
+        if (m.getId() == id) return true;
+    return false;
+}
+
+// ---------- Core Operations ----------
+void addBook() {
+    vector<Book> books = loadAllBooks();
+
+    int id = getIntInput("Enter Book ID: ");
+    if (findBookIndex(books, id) != -1) {
+        cout << "A book with this ID already exists!\n";
+        return;
+    }
+
+    string title = getStringInput("Enter Title: ");
+    string author = getStringInput("Enter Author: ");
+
+    books.push_back(Book(id, title, author, false, ""));
+    saveAllBooks(books);
+
+    cout << "Book added successfully!\n";
+}
+
+void addMember() {
+    vector<Member> members = loadAllMembers();
+
+    int id = getIntInput("Enter Member ID: ");
+    if (memberExists(members, id)) {
+        cout << "A member with this ID already exists!\n";
+        return;
+    }
+
+    string name = getStringInput("Enter Member Name: ");
+    string contact = getStringInput("Enter Contact Number: ");
+
+    members.push_back(Member(id, name, contact));
+    saveAllMembers(members);
+
+    cout << "Member added successfully!\n";
+}
+
+void issueBook() {
+    vector<Book> books = loadAllBooks();
+    vector<Member> members = loadAllMembers();
+
+    int bookId = getIntInput("Enter Book ID to issue: ");
+    int idx = findBookIndex(books, bookId);
+
+    if (idx == -1) {
+        cout << "Book not found.\n";
+        return;
+    }
+    if (books[idx].isIssued()) {
+        cout << "Book is already issued to member " << books[idx].getIssuedTo() << ".\n";
+        return;
+    }
+
+    int memberId = getIntInput("Enter Member ID: ");
+    if (!memberExists(members, memberId)) {
+        cout << "Member not found. Please add the member first.\n";
+        return;
+    }
+
+    books[idx].issueTo(to_string(memberId));
+    saveAllBooks(books);
+
+    cout << "Book \"" << books[idx].getTitle() << "\" issued to Member " << memberId << ".\n";
+}
+
+void returnBook() {
+    vector<Book> books = loadAllBooks();
+
+    int bookId = getIntInput("Enter Book ID to return: ");
+    int idx = findBookIndex(books, bookId);
+
+    if (idx == -1) {
+        cout << "Book not found.\n";
+        return;
+    }
+    if (!books[idx].isIssued()) {
+        cout << "This book is not currently issued.\n";
+        return;
+    }
+
+    books[idx].returnBook();
+    saveAllBooks(books);
+
+    cout << "Book \"" << books[idx].getTitle() << "\" has been returned.\n";
+}
+
+void searchBooks() {
+    cout << "Search by:\n1. Title\n2. Author\n";
+    int opt = getIntInput("Enter choice: ");
+    string keyword = getStringInput("Enter search keyword: ");
+    string keyLower = toLower(keyword);
+
+    vector<Book> books = loadAllBooks();
+    bool found = false;
+
+    cout << "\n" << left << setw(6) << "ID" << setw(25) << "Title" << setw(20) << "Author"
+         << setw(10) << "Status" << "\n";
+    cout << string(61, '-') << "\n";
+
+    for (const auto &b : books) {
+        bool match = false;
+        if (opt == 1 && toLower(b.getTitle()).find(keyLower) != string::npos) match = true;
+        if (opt == 2 && toLower(b.getAuthor()).find(keyLower) != string::npos) match = true;
+
+        if (match) {
+            b.display();
+            found = true;
+        }
+    }
+
+    if (!found) cout << "No matching books found.\n";
+}
+
+void displayAllBooks() {
+    vector<Book> books = loadAllBooks();
+
+    if (books.empty()) {
+        cout << "No books found in the library.\n";
+        return;
+    }
+
+    cout << "\n" << left << setw(6) << "ID" << setw(25) << "Title" << setw(20) << "Author"
+         << setw(10) << "Status" << "\n";
+    cout << string(61, '-') << "\n";
+
+    for (const auto &b : books) b.display();
+
+    cout << string(61, '-') << "\n";
+    cout << "Total Books: " << books.size() << "\n";
+}
+
+void displayAllMembers() {
+    vector<Member> members = loadAllMembers();
+
+    if (members.empty()) {
+        cout << "No members registered.\n";
+        return;
+    }
+
+    cout << "\n" << left << setw(10) << "ID" << setw(20) << "Name" << setw(15) << "Contact" << "\n";
+    cout << string(45, '-') << "\n";
+
+    for (const auto &m : members) m.display();
+
+    cout << string(45, '-') << "\n";
+    cout << "Total Members: " << members.size() << "\n";
+}
+
+void showMenu() {
+    cout << "\n===== LIBRARY MANAGEMENT SYSTEM =====\n";
+    cout << "1. Add Book\n";
+    cout << "2. Add Member\n";
+    cout << "3. Issue Book\n";
+    cout << "4. Return Book\n";
+    cout << "5. Search Book (Title/Author)\n";
+    cout << "6. Display All Books\n";
+    cout << "7. Display All Members\n";
+    cout << "8. Exit\n";
+    cout << "======================================\n";
+}
+
+int main() {
+    int choice;
+
+    do {
+        showMenu();
+        choice = getIntInput("Enter your choice: ");
+
+        switch (choice) {
+            case 1: addBook(); break;
+            case 2: addMember(); break;
+            case 3: issueBook(); break;
+            case 4: returnBook(); break;
+            case 5: searchBooks(); break;
+            case 6: displayAllBooks(); break;
+            case 7: displayAllMembers(); break;
+            case 8: cout << "Exiting... Goodbye!\n"; break;
+            default: cout << "Invalid choice. Please try again.\n";
+        }
+    } while (choice != 8);
+
+    return 0;
+}
