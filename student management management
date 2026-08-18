@@ -1,0 +1,259 @@
+/*
+    STUDENT MANAGEMENT SYSTEM
+    --------------------------
+    Console-based, menu-driven, uses file handling (students.txt) for
+    persistent storage. Supports Add, Update, Delete, Display (all / single).
+
+    Compile: g++ -std=c++17 -o student_management student_management.cpp
+    Run:     ./student_management
+*/
+
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <vector>
+#include <iomanip>
+#include <limits>
+
+using namespace std;
+
+const string FILE_NAME = "students.txt";
+
+struct Student {
+    int roll;
+    string name;
+    int age;
+    string course;
+    double marks;
+};
+
+// ---------- Utility ----------
+void clearInputBuffer() {
+    cin.clear();
+    cin.ignore(numeric_limits<streamsize>::max(), '\n');
+}
+
+int getIntInput(const string &prompt) {
+    int value;
+    while (true) {
+        cout << prompt;
+        cin >> value;
+        if (cin.fail()) {
+            cout << "Invalid input. Please enter a number.\n";
+            clearInputBuffer();
+        } else {
+            clearInputBuffer();
+            return value;
+        }
+    }
+}
+
+double getDoubleInput(const string &prompt) {
+    double value;
+    while (true) {
+        cout << prompt;
+        cin >> value;
+        if (cin.fail()) {
+            cout << "Invalid input. Please enter a number.\n";
+            clearInputBuffer();
+        } else {
+            clearInputBuffer();
+            return value;
+        }
+    }
+}
+
+string getStringInput(const string &prompt) {
+    string value;
+    cout << prompt;
+    getline(cin, value);
+    return value;
+}
+
+// ---------- File I/O Helpers ----------
+vector<Student> loadAllStudents() {
+    vector<Student> students;
+    ifstream inFile(FILE_NAME);
+    if (!inFile) return students;
+
+    string line;
+    while (getline(inFile, line)) {
+        if (line.empty()) continue;
+        stringstream ss(line);
+        string token;
+        Student s;
+
+        getline(ss, token, '|'); s.roll = stoi(token);
+        getline(ss, token, '|'); s.name = token;
+        getline(ss, token, '|'); s.age = stoi(token);
+        getline(ss, token, '|'); s.course = token;
+        getline(ss, token, '|'); s.marks = stod(token);
+
+        students.push_back(s);
+    }
+    inFile.close();
+    return students;
+}
+
+void saveAllStudents(const vector<Student> &students) {
+    ofstream outFile(FILE_NAME, ios::trunc);
+    for (const auto &s : students) {
+        outFile << s.roll << '|' << s.name << '|' << s.age << '|'
+                << s.course << '|' << s.marks << '\n';
+    }
+    outFile.close();
+}
+
+bool rollExists(const vector<Student> &students, int roll) {
+    for (const auto &s : students)
+        if (s.roll == roll) return true;
+    return false;
+}
+
+// ---------- Core Operations ----------
+void addStudent() {
+    vector<Student> students = loadAllStudents();
+
+    Student s;
+    s.roll = getIntInput("Enter Roll Number: ");
+
+    if (rollExists(students, s.roll)) {
+        cout << "A student with this roll number already exists!\n";
+        return;
+    }
+
+    s.name = getStringInput("Enter Name: ");
+    s.age = getIntInput("Enter Age: ");
+    s.course = getStringInput("Enter Course: ");
+    s.marks = getDoubleInput("Enter Marks: ");
+
+    students.push_back(s);
+    saveAllStudents(students);
+
+    cout << "Student record added successfully!\n";
+}
+
+void displayAllStudents() {
+    vector<Student> students = loadAllStudents();
+
+    if (students.empty()) {
+        cout << "No student records found.\n";
+        return;
+    }
+
+    cout << "\n" << left
+         << setw(8) << "Roll" << setw(20) << "Name" << setw(6) << "Age"
+         << setw(15) << "Course" << setw(8) << "Marks" << "\n";
+    cout << string(57, '-') << "\n";
+
+    for (const auto &s : students) {
+        cout << left
+             << setw(8) << s.roll << setw(20) << s.name << setw(6) << s.age
+             << setw(15) << s.course << setw(8) << s.marks << "\n";
+    }
+    cout << string(57, '-') << "\n";
+    cout << "Total Records: " << students.size() << "\n";
+}
+
+void displaySingleStudent() {
+    int roll = getIntInput("Enter Roll Number to search: ");
+    vector<Student> students = loadAllStudents();
+
+    for (const auto &s : students) {
+        if (s.roll == roll) {
+            cout << "\nRoll No : " << s.roll
+                 << "\nName    : " << s.name
+                 << "\nAge     : " << s.age
+                 << "\nCourse  : " << s.course
+                 << "\nMarks   : " << s.marks << "\n";
+            return;
+        }
+    }
+    cout << "Student with roll number " << roll << " not found.\n";
+}
+
+void updateStudent() {
+    int roll = getIntInput("Enter Roll Number to update: ");
+    vector<Student> students = loadAllStudents();
+
+    for (auto &s : students) {
+        if (s.roll == roll) {
+            cout << "Current details -> Name: " << s.name << ", Age: " << s.age
+                 << ", Course: " << s.course << ", Marks: " << s.marks << "\n";
+
+            s.name = getStringInput("Enter New Name: ");
+            s.age = getIntInput("Enter New Age: ");
+            s.course = getStringInput("Enter New Course: ");
+            s.marks = getDoubleInput("Enter New Marks: ");
+
+            saveAllStudents(students);
+            cout << "Student record updated successfully!\n";
+            return;
+        }
+    }
+    cout << "Student with roll number " << roll << " not found.\n";
+}
+
+void deleteStudent() {
+    int roll = getIntInput("Enter Roll Number to delete: ");
+    vector<Student> students = loadAllStudents();
+
+    bool found = false;
+    vector<Student> updated;
+    for (const auto &s : students) {
+        if (s.roll == roll) {
+            found = true;
+            continue;
+        }
+        updated.push_back(s);
+    }
+
+    if (!found) {
+        cout << "Student with roll number " << roll << " not found.\n";
+        return;
+    }
+
+    char confirm;
+    cout << "Are you sure you want to delete this record? (y/n): ";
+    cin >> confirm;
+    clearInputBuffer();
+
+    if (confirm == 'y' || confirm == 'Y') {
+        saveAllStudents(updated);
+        cout << "Student record deleted successfully!\n";
+    } else {
+        cout << "Deletion cancelled.\n";
+    }
+}
+
+void showMenu() {
+    cout << "\n===== STUDENT MANAGEMENT SYSTEM =====\n";
+    cout << "1. Add Student\n";
+    cout << "2. Display All Students\n";
+    cout << "3. Search Student by Roll Number\n";
+    cout << "4. Update Student\n";
+    cout << "5. Delete Student\n";
+    cout << "6. Exit\n";
+    cout << "======================================\n";
+}
+
+int main() {
+    int choice;
+
+    do {
+        showMenu();
+        choice = getIntInput("Enter your choice: ");
+
+        switch (choice) {
+            case 1: addStudent(); break;
+            case 2: displayAllStudents(); break;
+            case 3: displaySingleStudent(); break;
+            case 4: updateStudent(); break;
+            case 5: deleteStudent(); break;
+            case 6: cout << "Exiting... Goodbye!\n"; break;
+            default: cout << "Invalid choice. Please try again.\n";
+        }
+    } while (choice != 6);
+
+    return 0;
+}
